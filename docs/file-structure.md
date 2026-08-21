@@ -1,4 +1,4 @@
-cobol-compiler/
+cobimp/
 │
 ├── README.md
 ├── LICENSE
