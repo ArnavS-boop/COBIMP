@@ -1,0 +1,251 @@
+>>SOURCE FORMAT IS FREE
+
+IDENTIFICATION DIVISION.
+PROGRAM-ID. LEXER.
+
+DATA DIVISION.
+
+WORKING-STORAGE SECTION.
+
+    COPY "compiler-defs.cpy".
+
+    01 SOURCE-TEXT        PIC X(10000).
+    01 SOURCE-LENGTH      PIC 9(5).
+
+    01 CURRENT-POSITION   PIC 9(5) VALUE 1.
+    01 CURRENT-LINE       PIC 9(5) VALUE 1.
+    01 CURRENT-COLUMN     PIC 9(5) VALUE 1.
+
+    01 CURRENT-CHAR       PIC X.
+
+    01 TOKEN-VALUE        PIC X(64).
+    01 TOKEN-LENGTH       PIC 9(3) VALUE 0.
+
+    01 TOKEN-COUNT        PIC 9(3) VALUE 0.
+
+    01 TOKEN-TABLE.
+        05 TOKEN-ENTRY OCCURS 100 TIMES.
+            10 TOKEN-KIND     PIC 9(3).
+            10 TOKEN-TEXT     PIC X(64).
+            10 TOKEN-LINE     PIC 9(5).
+            10 TOKEN-COLUMN   PIC 9(5).
+
+    01 DIGIT-FLAG         PIC X VALUE "N".
+    01 LETTER-FLAG        PIC X VALUE "N".
+
+LINKAGE SECTION.
+
+    01 INPUT-SOURCE        PIC X(10000).
+    01 INPUT-LENGTH        PIC 9(5).
+
+PROCEDURE DIVISION USING INPUT-SOURCE INPUT-LENGTH.
+
+    MOVE INPUT-SOURCE TO SOURCE-TEXT.
+    MOVE INPUT-LENGTH TO SOURCE-LENGTH.
+
+    MOVE 1 TO CURRENT-POSITION.
+    MOVE 1 TO CURRENT-LINE.
+    MOVE 1 TO CURRENT-COLUMN.
+    MOVE 0 TO TOKEN-COUNT.
+
+    PERFORM LEX-SOURCE.
+
+    PERFORM DISPLAY-TOKENS.
+
+    GOBACK.
+
+
+LEX-SOURCE.
+
+    PERFORM UNTIL CURRENT-POSITION > SOURCE-LENGTH
+
+        MOVE SOURCE-TEXT(CURRENT-POSITION:1)
+            TO CURRENT-CHAR
+
+        EVALUATE CURRENT-CHAR
+
+            WHEN SPACE
+                ADD 1 TO CURRENT-POSITION
+                ADD 1 TO CURRENT-COLUMN
+
+            WHEN X"0A"
+                ADD 1 TO CURRENT-POSITION
+                ADD 1 TO CURRENT-LINE
+                MOVE 1 TO CURRENT-COLUMN
+
+            WHEN ";"
+                PERFORM ADD-SEMICOLON-TOKEN
+                ADD 1 TO CURRENT-POSITION
+                ADD 1 TO CURRENT-COLUMN
+
+            WHEN OTHER
+
+                MOVE "N" TO DIGIT-FLAG
+                MOVE "N" TO LETTER-FLAG
+
+                IF CURRENT-CHAR >= "0"
+                   AND CURRENT-CHAR <= "9"
+                    MOVE "Y" TO DIGIT-FLAG
+                END-IF
+
+                IF (CURRENT-CHAR >= "A"
+                    AND CURRENT-CHAR <= "Z")
+                   OR
+                   (CURRENT-CHAR >= "a"
+                    AND CURRENT-CHAR <= "z")
+                    MOVE "Y" TO LETTER-FLAG
+                END-IF
+
+                IF DIGIT-FLAG = "Y"
+                    PERFORM READ-NUMBER
+                ELSE
+                    IF LETTER-FLAG = "Y"
+                        PERFORM READ-WORD
+                    ELSE
+                        ADD 1 TO CURRENT-POSITION
+                        ADD 1 TO CURRENT-COLUMN
+                    END-IF
+                END-IF
+
+        END-EVALUATE
+
+    END-PERFORM.
+
+    ADD 1 TO TOKEN-COUNT
+    MOVE TOKEN-EOF TO TOKEN-KIND(TOKEN-COUNT)
+    MOVE "EOF" TO TOKEN-TEXT(TOKEN-COUNT)
+    MOVE CURRENT-LINE TO TOKEN-LINE(TOKEN-COUNT)
+    MOVE CURRENT-COLUMN TO TOKEN-COLUMN(TOKEN-COUNT).
+
+
+READ-NUMBER.
+
+    MOVE SPACES TO TOKEN-VALUE.
+    MOVE 0 TO TOKEN-LENGTH.
+
+    PERFORM UNTIL CURRENT-POSITION > SOURCE-LENGTH
+
+        MOVE SOURCE-TEXT(CURRENT-POSITION:1)
+            TO CURRENT-CHAR
+
+        IF CURRENT-CHAR >= "0"
+           AND CURRENT-CHAR <= "9"
+
+            ADD 1 TO TOKEN-LENGTH
+
+            MOVE CURRENT-CHAR
+                TO TOKEN-VALUE(TOKEN-LENGTH:1)
+
+            ADD 1 TO CURRENT-POSITION
+            ADD 1 TO CURRENT-COLUMN
+
+        ELSE
+            EXIT PERFORM
+        END-IF
+
+    END-PERFORM.
+
+    ADD 1 TO TOKEN-COUNT
+
+    MOVE TOKEN-INTEGER
+        TO TOKEN-KIND(TOKEN-COUNT)
+
+    MOVE TOKEN-VALUE
+        TO TOKEN-TEXT(TOKEN-COUNT)
+
+    MOVE CURRENT-LINE
+        TO TOKEN-LINE(TOKEN-COUNT)
+
+    MOVE CURRENT-COLUMN
+        TO TOKEN-COLUMN(TOKEN-COUNT).
+
+
+READ-WORD.
+
+    MOVE SPACES TO TOKEN-VALUE.
+    MOVE 0 TO TOKEN-LENGTH.
+
+    PERFORM UNTIL CURRENT-POSITION > SOURCE-LENGTH
+
+        MOVE SOURCE-TEXT(CURRENT-POSITION:1)
+            TO CURRENT-CHAR
+
+        IF (CURRENT-CHAR >= "A"
+            AND CURRENT-CHAR <= "Z")
+           OR
+           (CURRENT-CHAR >= "a"
+            AND CURRENT-CHAR <= "z")
+           OR CURRENT-CHAR = "_"
+
+            ADD 1 TO TOKEN-LENGTH
+
+            MOVE CURRENT-CHAR
+                TO TOKEN-VALUE(TOKEN-LENGTH:1)
+
+            ADD 1 TO CURRENT-POSITION
+            ADD 1 TO CURRENT-COLUMN
+
+        ELSE
+            EXIT PERFORM
+        END-IF
+
+    END-PERFORM.
+
+    ADD 1 TO TOKEN-COUNT
+
+    MOVE TOKEN-IDENTIFIER
+        TO TOKEN-KIND(TOKEN-COUNT)
+
+    MOVE TOKEN-VALUE
+        TO TOKEN-TEXT(TOKEN-COUNT)
+
+    MOVE CURRENT-LINE
+        TO TOKEN-LINE(TOKEN-COUNT)
+
+    MOVE CURRENT-COLUMN
+        TO TOKEN-COLUMN(TOKEN-COUNT).
+
+    IF FUNCTION TRIM(TOKEN-VALUE) = "print"
+        MOVE TOKEN-PRINT
+            TO TOKEN-KIND(TOKEN-COUNT)
+    END-IF.
+
+    IF FUNCTION TRIM(TOKEN-VALUE) = "let"
+        MOVE TOKEN-LET
+            TO TOKEN-KIND(TOKEN-COUNT)
+    END-IF.
+
+
+ADD-SEMICOLON-TOKEN.
+
+    ADD 1 TO TOKEN-COUNT.
+
+    MOVE TOKEN-SEMICOLON
+        TO TOKEN-KIND(TOKEN-COUNT).
+
+    MOVE ";"
+        TO TOKEN-TEXT(TOKEN-COUNT).
+
+    MOVE CURRENT-LINE
+        TO TOKEN-LINE(TOKEN-COUNT).
+
+    MOVE CURRENT-COLUMN
+        TO TOKEN-COLUMN(TOKEN-COUNT).
+
+
+DISPLAY-TOKENS.
+
+    PERFORM VARYING CURRENT-POSITION
+        FROM 1 BY 1
+        UNTIL CURRENT-POSITION > TOKEN-COUNT
+
+        DISPLAY
+            "Token "
+            CURRENT-POSITION
+            " | Type="
+            TOKEN-KIND(CURRENT-POSITION)
+            " | Text=["
+            FUNCTION TRIM(TOKEN-TEXT(CURRENT-POSITION))
+            "]"
+
+    END-PERFORM.
