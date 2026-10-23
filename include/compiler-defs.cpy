@@ -27,4 +27,8 @@
            05  TOKEN-RPAREN           PIC 9(3) VALUE 041.
            05  TOKEN-LBRACE           PIC 9(3) VALUE 042.
            05  TOKEN-RBRACE           PIC 9(3) VALUE 043.
+<<<<<<< HEAD
            05  TOKEN-SEMICOLON        PIC 9(3) VALUE 044.
+=======
+           05  TOKEN-SEMICOLON        PIC 9(3) VALUE 044.
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8

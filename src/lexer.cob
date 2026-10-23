@@ -20,11 +20,17 @@ WORKING-STORAGE SECTION.
     01 NEXT-CHAR          PIC X.
 
     01 TOKEN-VALUE        PIC X(64).
+<<<<<<< HEAD
     01 TOKEN-LENGTH       PIC 9(5) VALUE 0.
     01 TOKEN-START-LINE   PIC 9(5) VALUE 1.
     01 TOKEN-START-COLUMN PIC 9(5) VALUE 1.
 
     01 TOKEN-COUNT        PIC 9(5) VALUE 0.
+=======
+    01 TOKEN-LENGTH       PIC 9(3) VALUE 0.
+
+    01 TOKEN-COUNT        PIC 9(3) VALUE 0.
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
 
     01 LEXICAL-ERROR      PIC X VALUE "N".
 
@@ -32,7 +38,11 @@ WORKING-STORAGE SECTION.
     01 LETTER-FLAG        PIC X VALUE "N".
 
     01 TOKEN-TABLE.
+<<<<<<< HEAD
         05 TOKEN-ENTRY OCCURS 10001 TIMES.
+=======
+        05 TOKEN-ENTRY OCCURS 100 TIMES.
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
             10 TOKEN-KIND     PIC 9(3).
             10 TOKEN-TEXT     PIC X(64).
             10 TOKEN-LINE     PIC 9(5).
@@ -43,10 +53,17 @@ LINKAGE SECTION.
     01 INPUT-SOURCE        PIC X(10000).
     01 INPUT-LENGTH        PIC 9(5).
 
+<<<<<<< HEAD
     01 OUTPUT-TOKEN-COUNT   PIC 9(5).
 
     01 OUTPUT-TOKEN-TABLE.
         05 OUTPUT-TOKEN-ENTRY OCCURS 10001 TIMES.
+=======
+    01 OUTPUT-TOKEN-COUNT   PIC 9(3).
+
+    01 OUTPUT-TOKEN-TABLE.
+        05 OUTPUT-TOKEN-ENTRY OCCURS 100 TIMES.
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
             10 OUTPUT-TOKEN-KIND     PIC 9(3).
             10 OUTPUT-TOKEN-TEXT     PIC X(64).
             10 OUTPUT-TOKEN-LINE     PIC 9(5).
@@ -72,6 +89,10 @@ PROCEDURE DIVISION USING
     IF LEXICAL-ERROR = "N"
 
         PERFORM EXPORT-TOKENS
+<<<<<<< HEAD
+=======
+        PERFORM DISPLAY-TOKENS
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
 
     END-IF.
 
@@ -86,6 +107,7 @@ LEX-SOURCE.
         MOVE SOURCE-TEXT(CURRENT-POSITION:1)
             TO CURRENT-CHAR
 
+<<<<<<< HEAD
         EVALUATE TRUE
 
             WHEN CURRENT-CHAR = SPACE OR CURRENT-CHAR = X"09" OR CURRENT-CHAR = X"0D"
@@ -93,58 +115,107 @@ LEX-SOURCE.
                 ADD 1 TO CURRENT-COLUMN
 
             WHEN CURRENT-CHAR = X"0A"
+=======
+        EVALUATE CURRENT-CHAR
+
+            WHEN SPACE
+                ADD 1 TO CURRENT-POSITION
+                ADD 1 TO CURRENT-COLUMN
+
+            WHEN X"0A"
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
                 ADD 1 TO CURRENT-POSITION
                 ADD 1 TO CURRENT-LINE
                 MOVE 1 TO CURRENT-COLUMN
 
+<<<<<<< HEAD
             WHEN CURRENT-CHAR = ";"
+=======
+            WHEN ";"
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
                 PERFORM ADD-SEMICOLON-TOKEN
                 ADD 1 TO CURRENT-POSITION
                 ADD 1 TO CURRENT-COLUMN
 
+<<<<<<< HEAD
             WHEN CURRENT-CHAR = "="
                 PERFORM READ-EQUAL
 
             WHEN CURRENT-CHAR = "+"
+=======
+            WHEN "="
+                PERFORM READ-EQUAL
+
+            WHEN "+"
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
                 PERFORM ADD-PLUS-TOKEN
                 ADD 1 TO CURRENT-POSITION
                 ADD 1 TO CURRENT-COLUMN
 
+<<<<<<< HEAD
             WHEN CURRENT-CHAR = "-"
+=======
+            WHEN "-"
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
                 PERFORM ADD-MINUS-TOKEN
                 ADD 1 TO CURRENT-POSITION
                 ADD 1 TO CURRENT-COLUMN
 
+<<<<<<< HEAD
             WHEN CURRENT-CHAR = "*"
+=======
+            WHEN "*"
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
                 PERFORM ADD-MULTIPLY-TOKEN
                 ADD 1 TO CURRENT-POSITION
                 ADD 1 TO CURRENT-COLUMN
 
+<<<<<<< HEAD
             WHEN CURRENT-CHAR = "/"
+=======
+            WHEN "/"
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
                 PERFORM ADD-DIVIDE-TOKEN
                 ADD 1 TO CURRENT-POSITION
                 ADD 1 TO CURRENT-COLUMN
 
+<<<<<<< HEAD
             WHEN CURRENT-CHAR = "("
+=======
+            WHEN "("
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
                 PERFORM ADD-LPAREN-TOKEN
                 ADD 1 TO CURRENT-POSITION
                 ADD 1 TO CURRENT-COLUMN
 
+<<<<<<< HEAD
             WHEN CURRENT-CHAR = ")"
+=======
+            WHEN ")"
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
                 PERFORM ADD-RPAREN-TOKEN
                 ADD 1 TO CURRENT-POSITION
                 ADD 1 TO CURRENT-COLUMN
 
+<<<<<<< HEAD
             WHEN CURRENT-CHAR = "{"
+=======
+            WHEN "{"
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
                 PERFORM ADD-LBRACE-TOKEN
                 ADD 1 TO CURRENT-POSITION
                 ADD 1 TO CURRENT-COLUMN
 
+<<<<<<< HEAD
             WHEN CURRENT-CHAR = "}"
+=======
+            WHEN "}"
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
                 PERFORM ADD-RBRACE-TOKEN
                 ADD 1 TO CURRENT-POSITION
                 ADD 1 TO CURRENT-COLUMN
 
+<<<<<<< HEAD
             WHEN CURRENT-CHAR = "!"
                 PERFORM READ-NOT-EQUAL
 
@@ -152,6 +223,15 @@ LEX-SOURCE.
                 PERFORM READ-LESS
 
             WHEN CURRENT-CHAR = ">"
+=======
+            WHEN "!"
+                PERFORM READ-NOT-EQUAL
+
+            WHEN "<"
+                PERFORM READ-LESS
+
+            WHEN ">"
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
                 PERFORM READ-GREATER
 
             WHEN OTHER
@@ -205,13 +285,19 @@ LEX-SOURCE.
 
 READ-NUMBER.
 
+<<<<<<< HEAD
     MOVE CURRENT-LINE TO TOKEN-START-LINE.
     MOVE CURRENT-COLUMN TO TOKEN-START-COLUMN.
+=======
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
     MOVE SPACES TO TOKEN-VALUE.
     MOVE 0 TO TOKEN-LENGTH.
 
     PERFORM UNTIL CURRENT-POSITION > SOURCE-LENGTH
+<<<<<<< HEAD
         OR LEXICAL-ERROR = "Y"
+=======
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
 
         MOVE SOURCE-TEXT(CURRENT-POSITION:1)
             TO CURRENT-CHAR
@@ -219,11 +305,14 @@ READ-NUMBER.
         IF CURRENT-CHAR >= "0"
            AND CURRENT-CHAR <= "9"
 
+<<<<<<< HEAD
             IF TOKEN-LENGTH >= 64
                 PERFORM REPORT-LEXICAL-ERROR
                 EXIT PERFORM
             END-IF
 
+=======
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
             ADD 1 TO TOKEN-LENGTH
 
             MOVE CURRENT-CHAR
@@ -246,22 +335,35 @@ READ-NUMBER.
     MOVE TOKEN-VALUE
         TO TOKEN-TEXT(TOKEN-COUNT)
 
+<<<<<<< HEAD
     MOVE TOKEN-START-LINE
         TO TOKEN-LINE(TOKEN-COUNT)
 
     MOVE TOKEN-START-COLUMN
+=======
+    MOVE CURRENT-LINE
+        TO TOKEN-LINE(TOKEN-COUNT)
+
+    MOVE CURRENT-COLUMN
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
         TO TOKEN-COLUMN(TOKEN-COUNT).
 
 
 READ-WORD.
 
+<<<<<<< HEAD
     MOVE CURRENT-LINE TO TOKEN-START-LINE.
     MOVE CURRENT-COLUMN TO TOKEN-START-COLUMN.
+=======
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
     MOVE SPACES TO TOKEN-VALUE.
     MOVE 0 TO TOKEN-LENGTH.
 
     PERFORM UNTIL CURRENT-POSITION > SOURCE-LENGTH
+<<<<<<< HEAD
         OR LEXICAL-ERROR = "Y"
+=======
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
 
         MOVE SOURCE-TEXT(CURRENT-POSITION:1)
             TO CURRENT-CHAR
@@ -275,11 +377,14 @@ READ-WORD.
            OR (CURRENT-CHAR >= "0"
                AND CURRENT-CHAR <= "9")
 
+<<<<<<< HEAD
             IF TOKEN-LENGTH >= 64
                 PERFORM REPORT-LEXICAL-ERROR
                 EXIT PERFORM
             END-IF
 
+=======
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
             ADD 1 TO TOKEN-LENGTH
 
             MOVE CURRENT-CHAR
@@ -302,10 +407,17 @@ READ-WORD.
     MOVE TOKEN-VALUE
         TO TOKEN-TEXT(TOKEN-COUNT)
 
+<<<<<<< HEAD
     MOVE TOKEN-START-LINE
         TO TOKEN-LINE(TOKEN-COUNT)
 
     MOVE TOKEN-START-COLUMN
+=======
+    MOVE CURRENT-LINE
+        TO TOKEN-LINE(TOKEN-COUNT)
+
+    MOVE CURRENT-COLUMN
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
         TO TOKEN-COLUMN(TOKEN-COUNT).
 
        IF FUNCTION TRIM(TOKEN-VALUE) = "print"
@@ -323,10 +435,13 @@ READ-WORD.
                TO TOKEN-KIND(TOKEN-COUNT)
        END-IF.
 
+<<<<<<< HEAD
     IF FUNCTION TRIM(TOKEN-VALUE) = "while"
         MOVE TOKEN-WHILE TO TOKEN-KIND(TOKEN-COUNT)
     END-IF.
 
+=======
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
     IF FUNCTION TRIM(TOKEN-VALUE) = "let"
         MOVE TOKEN-LET
             TO TOKEN-KIND(TOKEN-COUNT)
@@ -727,4 +842,8 @@ DISPLAY-TOKENS.
             FUNCTION TRIM(TOKEN-TEXT(CURRENT-POSITION))
             "]"
 
+<<<<<<< HEAD
     END-PERFORM.
+=======
+    END-PERFORM.
+>>>>>>> 53d6ddea4ca89eaa948a51b347e238418b2661c8
