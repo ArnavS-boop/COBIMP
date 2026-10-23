@@ -1,0 +1,576 @@
+       >>SOURCE FORMAT IS FREE
+IDENTIFICATION DIVISION.
+PROGRAM-ID. PARSER.
+
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+    COPY "compiler-defs.cpy".
+
+    01 P-POS                 PIC 9(5).
+    01 P-DEPTH               PIC 9(3).
+    01 P-BLOCK-STACK.
+       05 P-BLOCK-FRAME OCCURS 100 TIMES.
+          10 P-BLOCK-ID      PIC 9(4).
+          10 P-PARENT-ID     PIC 9(4).
+    01 P-CLOSED-PARENT       PIC 9(4).
+    01 P-CURRENT-CONTAINER   PIC 9(4).
+    01 P-NEW-ID              PIC 9(4).
+    01 P-NEW-TYPE            PIC X(12).
+    01 P-NEW-VALUE           PIC X(64).
+    01 P-NEW-LEFT            PIC 9(4).
+    01 P-NEW-RIGHT           PIC 9(4).
+    01 P-NEW-THIRD           PIC 9(4).
+    01 P-NEW-LINE            PIC 9(5).
+    01 P-NEW-COLUMN          PIC 9(5).
+    01 P-STMT-NAME           PIC X(64).
+    01 P-STMT-LINE           PIC 9(5).
+    01 P-STMT-COLUMN         PIC 9(5).
+    01 P-EXPR-ROOT           PIC 9(4).
+    01 P-OPERAND-COUNT       PIC 9(4).
+    01 P-OPERAND-STACK.
+       05 P-OPERAND OCCURS 5000 TIMES PIC 9(4).
+    01 P-OP-COUNT            PIC 9(4).
+    01 P-OP-STACK.
+       05 P-OP-ENTRY OCCURS 5000 TIMES.
+          10 P-OP-KIND       PIC 9(3).
+          10 P-OP-TEXT       PIC X(2).
+    01 P-PAREN-DEPTH         PIC 9(4).
+    01 P-EXPECT-OPERAND      PIC X.
+    01 P-CURRENT-PRECEDENCE  PIC 9.
+    01 P-TOP-PRECEDENCE      PIC 9.
+    01 P-REDUCE-KIND         PIC 9(3).
+    01 P-REDUCE-TEXT         PIC X(2).
+    01 P-LEFT-ID             PIC 9(4).
+    01 P-RIGHT-ID            PIC 9(4).
+    01 P-FIRST-ID            PIC 9(4).
+    01 P-TEMP-ID             PIC 9(4).
+    01 P-LOOP-INDEX          PIC 9(4).
+    01 P-TOKEN-KIND          PIC 9(3).
+
+LINKAGE SECTION.
+    COPY "compiler-state.cpy".
+
+PROCEDURE DIVISION USING COMPILER-STATE.
+MAIN-PARSER.
+    MOVE 1 TO P-POS
+    MOVE 0 TO P-DEPTH
+    MOVE "N" TO CS-ERROR-FLAG
+    MOVE SPACES TO CS-ERROR-MESSAGE
+    MOVE 0 TO CS-ERROR-LINE CS-ERROR-COLUMN
+    MOVE 0 TO CS-AST-COUNT CS-AST-ROOT
+
+    MOVE "PROGRAM" TO P-NEW-TYPE
+    MOVE SPACES TO P-NEW-VALUE
+    MOVE 0 TO P-NEW-LEFT P-NEW-RIGHT P-NEW-THIRD
+    MOVE 1 TO P-NEW-LINE P-NEW-COLUMN
+    PERFORM P-ADD-NODE
+    MOVE P-NEW-ID TO CS-AST-ROOT
+    MOVE 1 TO P-DEPTH
+    MOVE CS-AST-ROOT TO P-BLOCK-ID(P-DEPTH)
+    MOVE 0 TO P-PARENT-ID(P-DEPTH)
+
+    PERFORM UNTIL P-POS > CS-TOKEN-COUNT
+        OR CS-ERROR-FLAG = "Y"
+        MOVE CS-TOKEN-KIND(P-POS) TO P-TOKEN-KIND
+        EVALUATE P-TOKEN-KIND
+            WHEN TOKEN-EOF
+                IF P-DEPTH > 1
+                    MOVE "Unclosed block; expected '}'." TO CS-ERROR-MESSAGE
+                    PERFORM P-SET-ERROR
+                ELSE
+                    EXIT PERFORM
+                END-IF
+            WHEN TOKEN-RBRACE
+                IF P-DEPTH <= 1
+                    MOVE "Unexpected '}'." TO CS-ERROR-MESSAGE
+                    PERFORM P-SET-ERROR
+                ELSE
+                    MOVE P-PARENT-ID(P-DEPTH) TO P-CLOSED-PARENT
+                    SUBTRACT 1 FROM P-DEPTH
+                    ADD 1 TO P-POS
+                    IF P-POS <= CS-TOKEN-COUNT
+                       AND CS-TOKEN-KIND(P-POS) = TOKEN-ELSE
+                        IF P-CLOSED-PARENT = 0
+                           OR CS-AST-TYPE(P-CLOSED-PARENT) NOT = "IF"
+                           OR CS-AST-THIRD(P-CLOSED-PARENT) NOT = 0
+                            MOVE "'else' must follow an if block." TO CS-ERROR-MESSAGE
+                            PERFORM P-SET-ERROR
+                        ELSE
+                            ADD 1 TO P-POS
+                            IF P-POS > CS-TOKEN-COUNT
+                               OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-LBRACE
+                                MOVE "Expected '{' after 'else'." TO CS-ERROR-MESSAGE
+                                PERFORM P-SET-ERROR
+                            ELSE
+                                MOVE "BLOCK" TO P-NEW-TYPE
+                                MOVE SPACES TO P-NEW-VALUE
+                                MOVE 0 TO P-NEW-LEFT P-NEW-RIGHT P-NEW-THIRD
+                                MOVE CS-TOKEN-LINE(P-POS) TO P-NEW-LINE
+                                MOVE CS-TOKEN-COLUMN(P-POS) TO P-NEW-COLUMN
+                                PERFORM P-ADD-NODE
+                                MOVE P-NEW-ID TO CS-AST-THIRD(P-CLOSED-PARENT)
+                                ADD 1 TO P-DEPTH
+                                MOVE P-NEW-ID TO P-BLOCK-ID(P-DEPTH)
+                                MOVE P-CLOSED-PARENT TO P-PARENT-ID(P-DEPTH)
+                                ADD 1 TO P-POS
+                            END-IF
+                        END-IF
+                    END-IF
+                END-IF
+            WHEN TOKEN-LET
+                PERFORM P-PARSE-DECLARATION
+            WHEN TOKEN-IDENTIFIER
+                PERFORM P-PARSE-ASSIGNMENT
+            WHEN TOKEN-PRINT
+                PERFORM P-PARSE-PRINT
+            WHEN TOKEN-IF
+                PERFORM P-PARSE-IF
+            WHEN TOKEN-WHILE
+                PERFORM P-PARSE-WHILE
+            WHEN TOKEN-LBRACE
+                MOVE "Standalone blocks are not supported; use if or while." TO CS-ERROR-MESSAGE
+                PERFORM P-SET-ERROR
+            WHEN OTHER
+                MOVE "Expected a statement." TO CS-ERROR-MESSAGE
+                PERFORM P-SET-ERROR
+        END-EVALUATE
+    END-PERFORM
+
+    IF CS-ERROR-FLAG = "N"
+       AND (P-POS > CS-TOKEN-COUNT
+            OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-EOF)
+        MOVE "Unexpected tokens after the program." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+    END-IF
+    GOBACK.
+
+P-PARSE-DECLARATION.
+    MOVE CS-TOKEN-LINE(P-POS) TO P-STMT-LINE
+    MOVE CS-TOKEN-COLUMN(P-POS) TO P-STMT-COLUMN
+    ADD 1 TO P-POS
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-IDENTIFIER
+        MOVE "Expected a variable name after 'let'." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    MOVE CS-TOKEN-TEXT(P-POS) TO P-STMT-NAME
+    ADD 1 TO P-POS
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-ASSIGN
+        MOVE "Expected '=' in variable declaration." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO P-POS
+    PERFORM P-PARSE-EXPRESSION
+    IF CS-ERROR-FLAG = "Y" EXIT PARAGRAPH END-IF
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-SEMICOLON
+        MOVE "Expected ';' after variable declaration." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO P-POS
+    MOVE "VAR-DECL" TO P-NEW-TYPE
+    MOVE P-STMT-NAME TO P-NEW-VALUE
+    MOVE P-EXPR-ROOT TO P-NEW-LEFT
+    MOVE 0 TO P-NEW-RIGHT P-NEW-THIRD
+    MOVE P-STMT-LINE TO P-NEW-LINE
+    MOVE P-STMT-COLUMN TO P-NEW-COLUMN
+    PERFORM P-ADD-NODE
+    MOVE P-NEW-ID TO P-TEMP-ID
+    PERFORM P-ATTACH-STATEMENT.
+
+P-PARSE-ASSIGNMENT.
+    MOVE CS-TOKEN-LINE(P-POS) TO P-STMT-LINE
+    MOVE CS-TOKEN-COLUMN(P-POS) TO P-STMT-COLUMN
+    MOVE CS-TOKEN-TEXT(P-POS) TO P-STMT-NAME
+    ADD 1 TO P-POS
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-ASSIGN
+        MOVE "Expected '=' after assignment target." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO P-POS
+    PERFORM P-PARSE-EXPRESSION
+    IF CS-ERROR-FLAG = "Y" EXIT PARAGRAPH END-IF
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-SEMICOLON
+        MOVE "Expected ';' after assignment." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO P-POS
+    MOVE "ASSIGN" TO P-NEW-TYPE
+    MOVE P-STMT-NAME TO P-NEW-VALUE
+    MOVE P-EXPR-ROOT TO P-NEW-LEFT
+    MOVE 0 TO P-NEW-RIGHT P-NEW-THIRD
+    MOVE P-STMT-LINE TO P-NEW-LINE
+    MOVE P-STMT-COLUMN TO P-NEW-COLUMN
+    PERFORM P-ADD-NODE
+    MOVE P-NEW-ID TO P-TEMP-ID
+    PERFORM P-ATTACH-STATEMENT.
+
+P-PARSE-PRINT.
+    MOVE CS-TOKEN-LINE(P-POS) TO P-STMT-LINE
+    MOVE CS-TOKEN-COLUMN(P-POS) TO P-STMT-COLUMN
+    ADD 1 TO P-POS
+    PERFORM P-PARSE-EXPRESSION
+    IF CS-ERROR-FLAG = "Y" EXIT PARAGRAPH END-IF
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-SEMICOLON
+        MOVE "Expected ';' after print expression." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO P-POS
+    MOVE "PRINT" TO P-NEW-TYPE
+    MOVE SPACES TO P-NEW-VALUE
+    MOVE P-EXPR-ROOT TO P-NEW-LEFT
+    MOVE 0 TO P-NEW-RIGHT P-NEW-THIRD
+    MOVE P-STMT-LINE TO P-NEW-LINE
+    MOVE P-STMT-COLUMN TO P-NEW-COLUMN
+    PERFORM P-ADD-NODE
+    MOVE P-NEW-ID TO P-TEMP-ID
+    PERFORM P-ATTACH-STATEMENT.
+
+P-PARSE-IF.
+    MOVE CS-TOKEN-LINE(P-POS) TO P-STMT-LINE
+    MOVE CS-TOKEN-COLUMN(P-POS) TO P-STMT-COLUMN
+    ADD 1 TO P-POS
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-LPAREN
+        MOVE "Expected '(' after 'if'." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO P-POS
+    PERFORM P-PARSE-EXPRESSION
+    IF CS-ERROR-FLAG = "Y" EXIT PARAGRAPH END-IF
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-RPAREN
+        MOVE "Expected ')' after if condition." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO P-POS
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-LBRACE
+        MOVE "Expected '{' after if condition." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    MOVE "IF" TO P-NEW-TYPE
+    MOVE SPACES TO P-NEW-VALUE
+    MOVE P-EXPR-ROOT TO P-NEW-LEFT
+    MOVE 0 TO P-NEW-RIGHT P-NEW-THIRD
+    MOVE P-STMT-LINE TO P-NEW-LINE
+    MOVE P-STMT-COLUMN TO P-NEW-COLUMN
+    PERFORM P-ADD-NODE
+    IF CS-ERROR-FLAG = "Y" EXIT PARAGRAPH END-IF
+    MOVE P-NEW-ID TO P-TEMP-ID
+    PERFORM P-ATTACH-STATEMENT
+    MOVE "BLOCK" TO P-NEW-TYPE
+    MOVE SPACES TO P-NEW-VALUE
+    MOVE 0 TO P-NEW-LEFT P-NEW-RIGHT P-NEW-THIRD
+    MOVE CS-TOKEN-LINE(P-POS) TO P-NEW-LINE
+    MOVE CS-TOKEN-COLUMN(P-POS) TO P-NEW-COLUMN
+    PERFORM P-ADD-NODE
+    IF CS-ERROR-FLAG = "Y" EXIT PARAGRAPH END-IF
+    MOVE P-NEW-ID TO CS-AST-RIGHT(P-TEMP-ID)
+    IF P-DEPTH >= 100
+        MOVE "Maximum block nesting depth (99) exceeded." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO P-DEPTH
+    MOVE P-NEW-ID TO P-BLOCK-ID(P-DEPTH)
+    MOVE P-TEMP-ID TO P-PARENT-ID(P-DEPTH)
+    ADD 1 TO P-POS.
+
+P-PARSE-WHILE.
+    MOVE CS-TOKEN-LINE(P-POS) TO P-STMT-LINE
+    MOVE CS-TOKEN-COLUMN(P-POS) TO P-STMT-COLUMN
+    ADD 1 TO P-POS
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-LPAREN
+        MOVE "Expected '(' after 'while'." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO P-POS
+    PERFORM P-PARSE-EXPRESSION
+    IF CS-ERROR-FLAG = "Y" EXIT PARAGRAPH END-IF
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-RPAREN
+        MOVE "Expected ')' after while condition." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO P-POS
+    IF P-POS > CS-TOKEN-COUNT
+       OR CS-TOKEN-KIND(P-POS) NOT = TOKEN-LBRACE
+        MOVE "Expected '{' after while condition." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    MOVE "WHILE" TO P-NEW-TYPE
+    MOVE SPACES TO P-NEW-VALUE
+    MOVE P-EXPR-ROOT TO P-NEW-LEFT
+    MOVE 0 TO P-NEW-RIGHT P-NEW-THIRD
+    MOVE P-STMT-LINE TO P-NEW-LINE
+    MOVE P-STMT-COLUMN TO P-NEW-COLUMN
+    PERFORM P-ADD-NODE
+    IF CS-ERROR-FLAG = "Y" EXIT PARAGRAPH END-IF
+    MOVE P-NEW-ID TO P-TEMP-ID
+    PERFORM P-ATTACH-STATEMENT
+    MOVE "BLOCK" TO P-NEW-TYPE
+    MOVE SPACES TO P-NEW-VALUE
+    MOVE 0 TO P-NEW-LEFT P-NEW-RIGHT P-NEW-THIRD
+    MOVE CS-TOKEN-LINE(P-POS) TO P-NEW-LINE
+    MOVE CS-TOKEN-COLUMN(P-POS) TO P-NEW-COLUMN
+    PERFORM P-ADD-NODE
+    IF CS-ERROR-FLAG = "Y" EXIT PARAGRAPH END-IF
+    MOVE P-NEW-ID TO CS-AST-RIGHT(P-TEMP-ID)
+    IF P-DEPTH >= 100
+        MOVE "Maximum block nesting depth (99) exceeded." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO P-DEPTH
+    MOVE P-NEW-ID TO P-BLOCK-ID(P-DEPTH)
+    MOVE P-TEMP-ID TO P-PARENT-ID(P-DEPTH)
+    ADD 1 TO P-POS.
+
+P-PARSE-EXPRESSION.
+    MOVE 0 TO P-OPERAND-COUNT P-OP-COUNT P-PAREN-DEPTH
+    MOVE "Y" TO P-EXPECT-OPERAND
+    PERFORM UNTIL P-POS > CS-TOKEN-COUNT OR CS-ERROR-FLAG = "Y"
+        MOVE CS-TOKEN-KIND(P-POS) TO P-TOKEN-KIND
+        EVALUATE TRUE
+            WHEN P-TOKEN-KIND = TOKEN-INTEGER
+              OR P-TOKEN-KIND = TOKEN-IDENTIFIER
+                IF P-EXPECT-OPERAND NOT = "Y"
+                    MOVE "Expected an operator between expression values." TO CS-ERROR-MESSAGE
+                    PERFORM P-SET-ERROR
+                ELSE
+                    IF P-TOKEN-KIND = TOKEN-INTEGER
+                        MOVE "INTEGER" TO P-NEW-TYPE
+                    ELSE
+                        MOVE "IDENTIFIER" TO P-NEW-TYPE
+                    END-IF
+                    MOVE CS-TOKEN-TEXT(P-POS) TO P-NEW-VALUE
+                    MOVE 0 TO P-NEW-LEFT P-NEW-RIGHT P-NEW-THIRD
+                    MOVE CS-TOKEN-LINE(P-POS) TO P-NEW-LINE
+                    MOVE CS-TOKEN-COLUMN(P-POS) TO P-NEW-COLUMN
+                    PERFORM P-ADD-NODE
+                    ADD 1 TO P-OPERAND-COUNT
+                    MOVE P-NEW-ID TO P-OPERAND(P-OPERAND-COUNT)
+                    ADD 1 TO P-POS
+                    MOVE "N" TO P-EXPECT-OPERAND
+                END-IF
+            WHEN P-TOKEN-KIND = TOKEN-LPAREN
+                IF P-EXPECT-OPERAND NOT = "Y"
+                    MOVE "Expected an operator before '('." TO CS-ERROR-MESSAGE
+                    PERFORM P-SET-ERROR
+                ELSE
+                    ADD 1 TO P-OP-COUNT
+                    MOVE TOKEN-LPAREN TO P-OP-KIND(P-OP-COUNT)
+                    MOVE "(" TO P-OP-TEXT(P-OP-COUNT)
+                    ADD 1 TO P-PAREN-DEPTH
+                    ADD 1 TO P-POS
+                END-IF
+            WHEN P-TOKEN-KIND = TOKEN-RPAREN
+                IF P-PAREN-DEPTH = 0
+                    EXIT PERFORM
+                ELSE
+                    PERFORM UNTIL P-OP-COUNT = 0
+                       OR P-OP-KIND(P-OP-COUNT) = TOKEN-LPAREN
+                       OR CS-ERROR-FLAG = "Y"
+                        PERFORM P-REDUCE-OPERATOR
+                    END-PERFORM
+                    IF P-OP-COUNT = 0
+                        MOVE "Mismatched ')' in expression." TO CS-ERROR-MESSAGE
+                        PERFORM P-SET-ERROR
+                    ELSE
+                        SUBTRACT 1 FROM P-OP-COUNT
+                        SUBTRACT 1 FROM P-PAREN-DEPTH
+                        ADD 1 TO P-POS
+                        MOVE "N" TO P-EXPECT-OPERAND
+                    END-IF
+                END-IF
+            WHEN P-TOKEN-KIND = TOKEN-PLUS
+              OR P-TOKEN-KIND = TOKEN-MINUS
+              OR P-TOKEN-KIND = TOKEN-MULTIPLY
+              OR P-TOKEN-KIND = TOKEN-DIVIDE
+              OR P-TOKEN-KIND = TOKEN-EQUAL
+              OR P-TOKEN-KIND = TOKEN-NOT-EQUAL
+              OR P-TOKEN-KIND = TOKEN-LESS
+              OR P-TOKEN-KIND = TOKEN-GREATER
+              OR P-TOKEN-KIND = TOKEN-LESS-EQUAL
+              OR P-TOKEN-KIND = TOKEN-GREATER-EQUAL
+                IF P-EXPECT-OPERAND = "Y"
+                    MOVE "Unary operators are not supported; expected a value." TO CS-ERROR-MESSAGE
+                    PERFORM P-SET-ERROR
+                ELSE
+                    PERFORM P-GET-PRECEDENCE
+                    PERFORM UNTIL P-OP-COUNT = 0
+                       OR P-OP-KIND(P-OP-COUNT) = TOKEN-LPAREN
+                       OR CS-ERROR-FLAG = "Y"
+                        PERFORM P-GET-TOP-PRECEDENCE
+                        IF P-TOP-PRECEDENCE >= P-CURRENT-PRECEDENCE
+                            PERFORM P-REDUCE-OPERATOR
+                        ELSE
+                            EXIT PERFORM
+                        END-IF
+                    END-PERFORM
+                    ADD 1 TO P-OP-COUNT
+                    MOVE P-TOKEN-KIND TO P-OP-KIND(P-OP-COUNT)
+                    MOVE CS-TOKEN-TEXT(P-POS)(1:2) TO P-OP-TEXT(P-OP-COUNT)
+                    ADD 1 TO P-POS
+                    MOVE "Y" TO P-EXPECT-OPERAND
+                END-IF
+            WHEN P-TOKEN-KIND = TOKEN-SEMICOLON
+              OR P-TOKEN-KIND = TOKEN-LBRACE
+              OR P-TOKEN-KIND = TOKEN-RBRACE
+              OR P-TOKEN-KIND = TOKEN-EOF
+                IF P-PAREN-DEPTH > 0
+                    MOVE "Expected ')' before end of expression." TO CS-ERROR-MESSAGE
+                    PERFORM P-SET-ERROR
+                END-IF
+                EXIT PERFORM
+            WHEN OTHER
+                MOVE "Unexpected token in expression." TO CS-ERROR-MESSAGE
+                PERFORM P-SET-ERROR
+        END-EVALUATE
+    END-PERFORM
+
+    IF CS-ERROR-FLAG = "Y" EXIT PARAGRAPH END-IF
+    IF P-EXPECT-OPERAND = "Y" OR P-OPERAND-COUNT = 0
+        MOVE "Expected an expression value." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    PERFORM UNTIL P-OP-COUNT = 0 OR CS-ERROR-FLAG = "Y"
+        IF P-OP-KIND(P-OP-COUNT) = TOKEN-LPAREN
+            MOVE "Mismatched '(' in expression." TO CS-ERROR-MESSAGE
+            PERFORM P-SET-ERROR
+        ELSE
+            PERFORM P-REDUCE-OPERATOR
+        END-IF
+    END-PERFORM
+    IF CS-ERROR-FLAG = "N"
+        IF P-OPERAND-COUNT NOT = 1
+            MOVE "Invalid expression structure." TO CS-ERROR-MESSAGE
+            PERFORM P-SET-ERROR
+        ELSE
+            MOVE P-OPERAND(1) TO P-EXPR-ROOT
+        END-IF
+    END-IF.
+
+P-GET-PRECEDENCE.
+    EVALUATE TRUE
+        WHEN P-TOKEN-KIND = TOKEN-EQUAL
+          OR P-TOKEN-KIND = TOKEN-NOT-EQUAL
+            MOVE 1 TO P-CURRENT-PRECEDENCE
+        WHEN P-TOKEN-KIND = TOKEN-LESS
+          OR P-TOKEN-KIND = TOKEN-GREATER
+          OR P-TOKEN-KIND = TOKEN-LESS-EQUAL
+          OR P-TOKEN-KIND = TOKEN-GREATER-EQUAL
+            MOVE 2 TO P-CURRENT-PRECEDENCE
+        WHEN P-TOKEN-KIND = TOKEN-PLUS
+          OR P-TOKEN-KIND = TOKEN-MINUS
+            MOVE 3 TO P-CURRENT-PRECEDENCE
+        WHEN P-TOKEN-KIND = TOKEN-MULTIPLY
+          OR P-TOKEN-KIND = TOKEN-DIVIDE
+            MOVE 4 TO P-CURRENT-PRECEDENCE
+        WHEN OTHER
+            MOVE 0 TO P-CURRENT-PRECEDENCE
+    END-EVALUATE.
+
+P-GET-TOP-PRECEDENCE.
+    MOVE P-OP-KIND(P-OP-COUNT) TO P-REDUCE-KIND
+    EVALUATE TRUE
+        WHEN P-REDUCE-KIND = TOKEN-EQUAL
+          OR P-REDUCE-KIND = TOKEN-NOT-EQUAL
+            MOVE 1 TO P-TOP-PRECEDENCE
+        WHEN P-REDUCE-KIND = TOKEN-LESS
+          OR P-REDUCE-KIND = TOKEN-GREATER
+          OR P-REDUCE-KIND = TOKEN-LESS-EQUAL
+          OR P-REDUCE-KIND = TOKEN-GREATER-EQUAL
+            MOVE 2 TO P-TOP-PRECEDENCE
+        WHEN P-REDUCE-KIND = TOKEN-PLUS
+          OR P-REDUCE-KIND = TOKEN-MINUS
+            MOVE 3 TO P-TOP-PRECEDENCE
+        WHEN P-REDUCE-KIND = TOKEN-MULTIPLY
+          OR P-REDUCE-KIND = TOKEN-DIVIDE
+            MOVE 4 TO P-TOP-PRECEDENCE
+        WHEN OTHER
+            MOVE 0 TO P-TOP-PRECEDENCE
+    END-EVALUATE.
+
+P-REDUCE-OPERATOR.
+    IF P-OP-COUNT = 0 OR P-OPERAND-COUNT < 2
+        MOVE "Invalid expression; operator is missing an operand." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        EXIT PARAGRAPH
+    END-IF
+    MOVE P-OP-KIND(P-OP-COUNT) TO P-REDUCE-KIND
+    MOVE P-OP-TEXT(P-OP-COUNT) TO P-REDUCE-TEXT
+    SUBTRACT 1 FROM P-OP-COUNT
+    MOVE P-OPERAND(P-OPERAND-COUNT) TO P-RIGHT-ID
+    SUBTRACT 1 FROM P-OPERAND-COUNT
+    MOVE P-OPERAND(P-OPERAND-COUNT) TO P-LEFT-ID
+    SUBTRACT 1 FROM P-OPERAND-COUNT
+    MOVE "BINARY-EXPR" TO P-NEW-TYPE
+    MOVE FUNCTION TRIM(P-REDUCE-TEXT) TO P-NEW-VALUE
+    MOVE P-LEFT-ID TO P-NEW-LEFT
+    MOVE P-RIGHT-ID TO P-NEW-RIGHT
+    MOVE 0 TO P-NEW-THIRD
+    MOVE CS-AST-LINE(P-LEFT-ID) TO P-NEW-LINE
+    MOVE CS-AST-COLUMN(P-LEFT-ID) TO P-NEW-COLUMN
+    PERFORM P-ADD-NODE
+    IF CS-ERROR-FLAG = "Y" EXIT PARAGRAPH END-IF
+    MOVE CS-AST-FIRST(P-LEFT-ID) TO P-FIRST-ID
+    IF CS-AST-FIRST(P-RIGHT-ID) < P-FIRST-ID
+        MOVE CS-AST-FIRST(P-RIGHT-ID) TO P-FIRST-ID
+    END-IF
+    MOVE P-FIRST-ID TO CS-AST-FIRST(P-NEW-ID)
+    ADD 1 TO P-OPERAND-COUNT
+    MOVE P-NEW-ID TO P-OPERAND(P-OPERAND-COUNT).
+
+P-ADD-NODE.
+    IF CS-AST-COUNT >= 5000
+        MOVE "AST node capacity exceeded (5000 nodes)." TO CS-ERROR-MESSAGE
+        PERFORM P-SET-ERROR
+        MOVE 0 TO P-NEW-ID
+        EXIT PARAGRAPH
+    END-IF
+    ADD 1 TO CS-AST-COUNT
+    MOVE CS-AST-COUNT TO P-NEW-ID
+    INITIALIZE CS-AST-NODE(P-NEW-ID)
+    MOVE P-NEW-TYPE TO CS-AST-TYPE(P-NEW-ID)
+    MOVE P-NEW-VALUE TO CS-AST-VALUE(P-NEW-ID)
+    MOVE P-NEW-LEFT TO CS-AST-LEFT(P-NEW-ID)
+    MOVE P-NEW-RIGHT TO CS-AST-RIGHT(P-NEW-ID)
+    MOVE P-NEW-THIRD TO CS-AST-THIRD(P-NEW-ID)
+    MOVE P-NEW-LINE TO CS-AST-LINE(P-NEW-ID)
+    MOVE P-NEW-COLUMN TO CS-AST-COLUMN(P-NEW-ID)
+    MOVE P-NEW-ID TO CS-AST-FIRST(P-NEW-ID).
+
+P-ATTACH-STATEMENT.
+    MOVE P-BLOCK-ID(P-DEPTH) TO P-CURRENT-CONTAINER
+    IF CS-AST-LEFT(P-CURRENT-CONTAINER) = 0
+        MOVE P-TEMP-ID TO CS-AST-LEFT(P-CURRENT-CONTAINER)
+    ELSE
+        MOVE P-TEMP-ID TO CS-AST-NEXT(
+            CS-AST-THIRD(P-CURRENT-CONTAINER))
+    END-IF
+    MOVE P-TEMP-ID TO CS-AST-THIRD(P-CURRENT-CONTAINER).
+
+P-SET-ERROR.
+    MOVE "Y" TO CS-ERROR-FLAG
+    MOVE CS-TOKEN-LINE(P-POS) TO CS-ERROR-LINE
+    MOVE CS-TOKEN-COLUMN(P-POS) TO CS-ERROR-COLUMN.

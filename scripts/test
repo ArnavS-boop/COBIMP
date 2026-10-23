@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+set -eu
+cd "$(dirname "$0")/.."
+./scripts/build
+for src in examples/*.cbimp; do
+  echo "[VALID] $src"
+  ./cobimp "$src"
+  test -f "${src%.cbimp}.asm"
+done
+for src in tests/invalid/*.cbimp; do
+  echo "[INVALID] $src"
+  if ./cobimp "$src"; then
+    echo "Expected compilation failure for $src" >&2
+    exit 1
+  fi
+done
+echo "All compiler smoke tests passed."

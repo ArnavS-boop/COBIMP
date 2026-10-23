@@ -1,0 +1,17 @@
+# GnuCOBOL build products
+cobimp
+cobimp.exe
+*.o
+*.obj
+*.asm
+
+# Temporary outputs
+*.tac
+*.tokens
+*.optimized
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

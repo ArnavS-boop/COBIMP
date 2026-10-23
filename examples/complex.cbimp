@@ -1,0 +1,26 @@
+let x = 10;
+let y = 3;
+let result = x * y + 2;
+
+print result;
+
+if (result >= 30) {
+    print 1;
+} else {
+    print 0;
+}
+
+let i = 0;
+
+while (i < 3) {
+    let value = i + result;
+    print value;
+
+    if (value != 30) {
+        print i;
+    } else {
+        print 30;
+    }
+
+    i = i + 1;
+}

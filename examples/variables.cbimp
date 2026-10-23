@@ -1,0 +1,13 @@
+let x = 10;
+let y = 20;
+let sum = x + y;
+
+print x;
+print y;
+print sum;
+
+x = 15;
+print x;
+
+let result = x * 2 + y / 5;
+print result;

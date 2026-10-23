@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+set -eu
+cd "$(dirname "$0")/.."
+command -v cobc >/dev/null 2>&1 || {
+  echo "GnuCOBOL (cobc) was not found on PATH." >&2
+  exit 1
+}
+cobc -free -x -I include -o cobimp \
+  src/main.cob src/lexer.cob src/token.cob src/parser.cob src/ast.cob \
+  src/semantic.cob src/symbol.cob src/tac.cob src/ir.cob \
+  src/optimizer.cob src/codegen.cob src/error.cob
+echo "Built ./cobimp"
